@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Python unit tests (05-jenkins-ci)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unittest
+        working-directory: 05-jenkins-ci
+        run: python -m unittest discover tests -v
+
+  backup-script:
+    name: Bash backup script (03-bash-backup-script)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -S warning 03-bash-backup-script/backup.sh 05-jenkins-ci/jenkins-build.sh
+      - name: Rotation keeps the newest 3 backups
+        run: |
+          export SRC_DIR="$RUNNER_TEMP/personal" DEST_BASE="$RUNNER_TEMP/backups"
+          mkdir -p "$SRC_DIR" && echo "hello" > "$SRC_DIR/notes.txt" && echo "hidden" > "$SRC_DIR/.secret"
+          for i in 1 2 3 4 5; do ./03-bash-backup-script/backup.sh; sleep 1; done
+          count=$(find "$DEST_BASE" -maxdepth 1 -type d -name 'backup_archive_*' | wc -l)
+          echo "Backups left: $count"
+          test "$count" -eq 3
+          newest=$(ls -d "$DEST_BASE"/backup_archive_* | tail -n 1)
+          diff -r "$SRC_DIR" "$newest"
+
+  docker:
+    name: Docker build & run (04-docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t hello-docker 04-docker
+      - name: Run container and check output
+        run: test "$(docker run --rm hello-docker)" = "Hello, Docker!"
